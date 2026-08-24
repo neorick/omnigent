@@ -1,0 +1,52 @@
+name: Mirror to GitLab
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "**"
+  delete:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitlab-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Mirror branches and tags
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_URL: https://gitlab.com/neorick/sandbox/apps/research/omnigent.git
+        run: |
+          set -euo pipefail
+
+          mkdir mirror.git
+          cd mirror.git
+          git init --bare
+
+          GH_AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          GL_AUTH="$(printf 'oauth2:%s' "$GITLAB_TOKEN" | base64 -w0)"
+
+          git \
+            -c "http.extraheader=AUTHORIZATION: basic $GH_AUTH" \
+            fetch --prune --tags \
+            "https://github.com/${GITHUB_REPOSITORY}.git" \
+            '+refs/heads/*:refs/heads/*'
+
+          git \
+            -c "http.extraheader=AUTHORIZATION: basic $GL_AUTH" \
+            push --force --prune "$GITLAB_URL" \
+            '+refs/heads/*:refs/heads/*' \
+            '+refs/tags/*:refs/tags/*'
